@@ -1,18 +1,14 @@
-import collectd
 import logging
 
-def str_to_bool(flag):
-    '''
-    Converts true/false to boolean
-    '''
-    flag = str(flag).strip().lower()
-    if flag == 'true':
-        return True
-    elif flag != 'false':
-        collectd.warning("WARNING: REQUIRES BOOLEAN. \
-                RECEIVED %s. ASSUMING FALSE." % (str(flag)))
+try:
+    import collectd
 
-    return False
+except ImportError:
+    try:
+        import dummy_collectd as collectd
+    except:
+        pass
+
 
 class CollectdLogHandler(logging.Handler):
     """Log handler to forward statements to collectd
@@ -42,21 +38,17 @@ class CollectdLogHandler(logging.Handler):
         Arguments
         record -- str log record to be emitted
         """
-        try:
-            if record.msg is not None:
-                if record.levelname == 'ERROR':
-                    collectd.error('%s : %s' % (self.plugin, record.msg))
-                elif record.levelname == 'WARNING':
-                    collectd.warning('%s : %s' % (self.plugin, record.msg))
-                elif record.levelname == 'NOTICE':
-                    collectd.notice('%s : %s' % (self.plugin, record.msg))
-                elif record.levelname == 'INFO':
-                    collectd.info('%s : %s' % (self.plugin, record.msg))
-                elif record.levelname == 'DEBUG':
-                    collectd.info('%s : %s' % (self.plugin, record.msg))
-        except Exception as e:
-            collectd.warning(('{p} [ERROR]: Failed to write log statement due '
-                              'to: {e}').format(p=self.plugin, e=e))
+        if record.msg is not None:
+            if record.levelname == 'ERROR':
+                collectd.error('%s : %s' % (self.plugin, record.msg))
+            elif record.levelname == 'WARNING':
+                collectd.warning('%s : %s' % (self.plugin, record.msg))
+            elif record.levelname == 'NOTICE':
+                collectd.notice('%s : %s' % (self.plugin, record.msg))
+            elif record.levelname == 'INFO':
+                collectd.info('%s : %s' % (self.plugin, record.msg))
+            elif record.levelname == 'DEBUG':
+                collectd.info('%s : %s' % (self.plugin, record.msg))
 
 
 class CollectdLogger(logging.Logger):
@@ -69,7 +61,7 @@ class CollectdLogger(logging.Logger):
     level -- log level to filter by
     """
 
-    def __init__(self, name, level=logging.NOTSET):
+    def __init__(self, name, level=logging.INFO):
         """Initializes CollectdLogger
         Arguments
         name -- name of the logger
@@ -78,7 +70,6 @@ class CollectdLogger(logging.Logger):
         logging.Logger.__init__(self, name, level)
         logging.addLevelName(25, 'NOTICE')
         handle = CollectdLogHandler(name)
-        self.setLevel(logging.INFO)
         self.propagate = False
         self.addHandler(handle)
 
@@ -89,17 +80,57 @@ class CollectdLogger(logging.Logger):
         """
         self.log(25, msg)
 
+
 # assign the custom CollectdLogger to be the default logging class
 logging.setLoggerClass(CollectdLogger)
 
-def shutdown(name):
-    """Cleanup on plugin shutdown."""
-    lg = logging.getLogger(name)
 
+def getLogLevelFromConfig(val):
+    """Takes a config value and maps it to a log level
+    Default Value: logging.INFO
     """
-    For some reason handlers seem to leak memory, so we need to expicitly
-    destroy references to them
-     """
-    lg.info("{} shutting down".format(name))
-    for handle in lg.handlers:
-        lg.removeHandler(handle)
+    log_level = logging.INFO
+    if val == 'DEBUG':
+        log_level = logging.DEBUG
+    elif val == 'INFO':
+        log_level = logging.INFO
+    elif val == 'NOTICE':
+        # NOTICE is a custom level in sfx_utilities.CollectdLogger
+        log_level = 25 
+    elif val == 'WARNING':
+        log_level = logging.WARNING
+    elif val == 'ERROR':
+        log_level = logging.ERROR
+    return log_level
+
+
+def str_to_bool(flag):
+    """Converts true/false to boolean"""
+    flag = str(flag).strip().lower()
+    if flag == 'true':
+        return True
+    elif flag != 'false':
+        collectd.warning("WARNING: REQUIRES BOOLEAN. \
+                RECEIVED %s. ASSUMING FALSE." % (str(flag)))
+
+    return False
+    
+
+# def shutdown(name):
+#     """Cleanup on plugin shutdown."""
+#     lg = logging.getLogger(name)
+
+#     for key, logger in logging.manager.loggerDict.items():
+#         collectd.info("Attempting to shutdown logger %s" % logger)
+#         for handle in logger.handlers.items():
+#             pass
+
+
+#     """
+#     For some reason handlers seem to leak memory, so we need to expicitly
+#     destroy references to them
+#      """
+    
+#     lg.info("{} shutting down".format(name))
+#     for handle in lg.handlers:
+#         lg.removeHandler(handle)
