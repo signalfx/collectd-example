@@ -4,7 +4,7 @@
 # For more information see https://collectd.org/documentation/manpages/collectd-python.5.shtml
 import logging
 import sys
-import sfx_utilities as sfx
+import sfx_collectd_utilities as sfx
 import time
 # from math import pi, sin
 
@@ -19,14 +19,12 @@ except ImportError:
 
 # set the plugin name as a global variable
 PLUGIN_NAME = 'hello-world'
+
 # this instantiates sfx_utilities.CollectdLogger
 log = logging.getLogger(PLUGIN_NAME)
+
+# keep a global count of the number of instances configured
 INSTANCE_COUNT = 0
-DEFAULT_INTERVAL = 10.0
-DATAPOINT_COUNT = 0
-NOTIFICATION_COUNT = 0
-PLUGIN_INSTANCE = "example[frequency=%s]"
-SEND = True
 
 
 def config(conf):
@@ -46,7 +44,6 @@ def config(conf):
     # some defaults are initialized
     data = {
         'InstanceID': "{0}-{1}".format(PLUGIN_NAME, INSTANCE_COUNT),
-        'Interval': DEFAULT_INTERVAL,
         'LogLevel': logging.INFO,
         'Dimensions': {}
     }
@@ -55,43 +52,47 @@ def config(conf):
     log = logging.getLogger(data['InstanceID'])
 
     for kv in conf.children:
-        # debug configuration keys
+        # log the configuration keys
         log.debug(str(kv))
+        # users should be able to set the log level for each module block
+        # if LogLevel is the first configuration in the module block, it will be parsed first
         if kv.key == 'LogLevel':
-            level = sfx.getLogLevelFromConfig(kv.values[0])
-            log.setLevel(level)
-            data['LogLevel'] = level
+            data['LogLevel'] = sfx.getLogLevelFromConfig(kv.values[0])
+            log.setLevel(data['LogLevel'])
+        # users should be able to specify an interval for each module block
         elif kv.key == 'Interval':
             data[kv.key] = float(kv.values[0])
+        # plugins should parse user specified dimensions that will be appended to all emitted metrics
         elif kv.key == 'Dimension':
             if len(kv.values) >= 2:
-                # TODO: validate the key with ingest's validation
-                key = kv.values[0]
-                val = kv.values[1]
-                data['Dimensions'][str(key)] = str(val)
+                key = str(kv.values[0])
+                val = str(kv.values[1])
+                if sfx.isValidDimensionKey(key):
+                    data['Dimensions'][key] = val
+                else:
+                    log.warning("Unable to parse dimension {}".format(kv.values))
             else:
                 log.warning("Unable to parse dimension {}".format(kv.values))
+        # additional configuration keys can be specified and parsed accordingly
         elif kv.key == 'ConfigKey1':
-            collectd.info(kv.values[0])
+            log.info(kv.values[0])
             data[kv.key] = kv.values[0]
 
-    collectd.info(str(sfx.str_to_bool("false")))
-    log.info("THIS IS A TEST OF THE LOG CLASS")
-    log.debug("THIS SHOULDN'T APPEAR")
-    log.setLevel(logging.DEBUG)
-    log.debug("THIS SHOULD SHOW UP")
+    # collectd.info(str(sfx.str_to_bool("false")))
+    # log.info("THIS IS A TEST OF THE LOG CLASS")
+    # log.debug("THIS SHOULDN'T APPEAR")
+    # log.setLevel(logging.DEBUG)
+    # log.debug("THIS SHOULD SHOW UP")
 
     # Register a read callback with the data dictionary.  When collectd invokes
-    # the read callback it will pass back the dictionary.
-    collectd.register_read(
-                            read,
-                            data['Interval'],
-                            data=data,
-                            name=data['InstanceID']
-    )
+    # the read callback it will pass back the data dictionary.
+    if 'Interval' in data:  # register with user specified interval
+        collectd.register_read(read, data['Interval'], data=data, name=data['InstanceID'])
+    else:  # register with out an interval to use collectd default
+        collectd.register_read(read, data=data, name=data['InstanceID'])
 
-    # Increment the instance count
-    global INSTANCE_COUNT 
+    # Increment the instance count once a read call back is registered for the instance
+    global INSTANCE_COUNT
     INSTANCE_COUNT = INSTANCE_COUNT + 1
 
 
@@ -103,7 +104,6 @@ def read(data):
 
     :return: None
     """
-
     # val = sin(time.time() * 2 * pi / 60 * FREQUENCY)
     # collectd.Values(plugin=PLUGIN_NAME,
     #                 type_instance="sine",
@@ -121,22 +121,15 @@ def read(data):
     #                 type="counter",
     #                 values=[NOTIFICATION_COUNT]).dispatch()
 
-    # Set verbosity for this instance
+    # get the logger for the instance which should be set to the appropriate logging level
     global log
     log = logging.getLogger(data['InstanceID'])
 
-    log.info("READING CALLBACK")
-    log.info(str(data))
+    # log the data object as debug information
+    log.debug(data)
 
-    global SEND
-    if SEND:
-        notif = collectd.Notification(plugin=PLUGIN_NAME,
-                                      type_instance="started",
-                                      type="objects")  # need a valid type for notification
-        notif.severity = 4  # OKAY
-        notif.message = "The %s plugin has just started" % PLUGIN_NAME
-        notif.dispatch()
-        SEND = False
+    log.info("READING CALLBACK")
+    # log.info(str(data))
 
 
 def init():
@@ -159,47 +152,44 @@ def shutdown():
     """
     log.info("Plugin %s shutting down..." % PLUGIN_NAME)
 
-    # always invoke the sfx.shutdown function to clean up log handlers
-    # sfx.shutdown(PLUGIN_NAME)
+
+# def write(values):
+#     """
+#     This method has been registered as the write callback. Let's count the number of datapoints
+#     and emit that as a metric.
+
+#     :param values: Values object for datapoint
+#     :return: None
+#     """
+
+#     global DATAPOINT_COUNT
+#     DATAPOINT_COUNT += len(values.values)
 
 
-def write(values):
-    """
-    This method has been registered as the write callback. Let's count the number of datapoints
-    and emit that as a metric.
+# def flush(timeout, identifier):
+#     """
+#     This method has been registered as the flush callback.  Log the two params it is given.
 
-    :param values: Values object for datapoint
-    :return: None
-    """
-
-    global DATAPOINT_COUNT
-    DATAPOINT_COUNT += len(values.values)
-
-
-def flush(timeout, identifier):
-    """
-    This method has been registered as the flush callback.  Log the two params it is given.
-
-    :param timeout: indicates that only data older than timeout seconds is to be flushed
-    :param identifier: specifies which values are to be flushed
-    :return: None
-    """
-    log.info("Plugin {} flushing timeout {} and identifier {}".format(PLUGIN_NAME,
-                                                                      timeout,
-                                                                      identifier))
+#     :param timeout: indicates that only data older than timeout seconds is to be flushed
+#     :param identifier: specifies which values are to be flushed
+#     :return: None
+#     """
+#     log.info("Plugin {} flushing timeout {} and identifier {}".format(PLUGIN_NAME,
+#                                                                       timeout,
+#                                                                       identifier))
 
 
-def notification(notif):
-    """
-    This method has been regstered as the notification callback. Let's count the notifications
-    we receive and emit that as a metric.
+# def notification(notif):
+#     """
+#     This method has been regstered as the notification callback. Let's count the notifications
+#     we receive and emit that as a metric.
 
-    :param notif: a Notification object.
-    :return: None
-    """
+#     :param notif: a Notification object.
+#     :return: None
+#     """
 
-    global NOTIFICATION_COUNT
-    NOTIFICATION_COUNT += 1
+#     global NOTIFICATION_COUNT
+#     NOTIFICATION_COUNT += 1
 
 
 if __name__ != "__main__":
@@ -207,9 +197,12 @@ if __name__ != "__main__":
     collectd.register_config(config)
     collectd.register_init(init)
     collectd.register_shutdown(shutdown)
-    collectd.register_write(write)
-    collectd.register_flush(flush)
-    collectd.register_notification(notification)
+
+    # the following registrations are used for intercepting 
+    # data points and notifications emitted through collectd
+    # collectd.register_write(write)
+    # collectd.register_flush(flush)
+    # collectd.register_notification(notification)
 else:
     # outside plugin just collect the info
     read()
