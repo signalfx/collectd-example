@@ -57,7 +57,7 @@ def config(conf):
         # users should be able to set the log level for each module block
         # if LogLevel is the first configuration in the module block, it will be parsed first
         if kv.key == 'LogLevel':
-            data['LogLevel'] = sfx.getLogLevelFromConfig(kv.values[0])
+            data['LogLevel'] = sfx.get_log_level_from_config(kv.values[0])
             log.setLevel(data['LogLevel'])
         # users should be able to specify an interval for each module block
         elif kv.key == 'Interval':
@@ -77,12 +77,6 @@ def config(conf):
         elif kv.key == 'ConfigKey1':
             log.info(kv.values[0])
             data[kv.key] = kv.values[0]
-
-    # collectd.info(str(sfx.str_to_bool("false")))
-    # log.info("THIS IS A TEST OF THE LOG CLASS")
-    # log.debug("THIS SHOULDN'T APPEAR")
-    # log.setLevel(logging.DEBUG)
-    # log.debug("THIS SHOULD SHOW UP")
 
     # Register a read callback with the data dictionary.  When collectd invokes
     # the read callback it will pass back the data dictionary.
@@ -198,7 +192,7 @@ if __name__ != "__main__":
     collectd.register_init(init)
     collectd.register_shutdown(shutdown)
 
-    # the following registrations are used for intercepting 
+    # the following registrations are used for intercepting
     # data points and notifications emitted through collectd
     # collectd.register_write(write)
     # collectd.register_flush(flush)

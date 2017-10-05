@@ -2,7 +2,6 @@ import logging
 
 try:
     import collectd
-
 except ImportError:
     try:
         import dummy_collectd as collectd
@@ -12,6 +11,12 @@ except ImportError:
 NOTIF_FAILURE = collectd.NOTIF_FAILURE
 NOTIF_WARNING = collectd.NOTIF_WARNING
 NOTIF_OKAY = collectd.NOTIF_OKAY
+
+
+# TODO: @charlie add tls authentication for making requests
+
+
+# TODO: @charlie add functions for managing versioned metrics
 
 
 class CollectdLogHandler(logging.Handler):
@@ -89,7 +94,7 @@ class CollectdLogger(logging.Logger):
 logging.setLoggerClass(CollectdLogger)
 
 
-def getLogLevelFromConfig(val):
+def get_log_level_from_config(val):
     """Takes a config value and maps it to a log level
     Default Value: logging.INFO
     """
@@ -102,7 +107,7 @@ def getLogLevelFromConfig(val):
         log_level = logging.INFO
     elif value == 'NOTICE':
         # NOTICE is a custom level in sfx_utilities.CollectdLogger
-        log_level = 25 
+        log_level = 25
     elif value == 'WARNING':
         log_level = logging.WARNING
     elif value == 'ERROR':
@@ -125,7 +130,7 @@ def str_to_bool(flag):
 def _parse_dimensions(dimensions={}, max_length=1022):
     """Formats a dictionary of key/value pairs as a comma-delimited list of
     key=value tokens."""
-    if dimensions and dimensions.__class__ == dict and len(dimensions) > 0:
+    if dimensions:
         return ','.join(['='.join(p) for p in dimensions.items()])[:(max_length)]
     else:
         return ''
@@ -140,10 +145,10 @@ def isValidDimensionKey():
 
 
 # host, plugin, plugin_instance, time, type, type_instance
-def dispatchNotification(message="", severity=NOTIF_OKAY,
-                         plugin="Unknown", plugin_instance="",
-                         type="objects", type_instance=None,
-                         time=None, host=None):
+def dispatch_notification(message="", severity=NOTIF_OKAY,
+                          plugin="Unknown", plugin_instance="",
+                          type="objects", type_instance=None,
+                          time=None, host=None):
     """
     This method dispatches notifications and appropriately appends dimensions to plugin instance
 
@@ -183,15 +188,15 @@ def dispatchNotification(message="", severity=NOTIF_OKAY,
         notif.host = host
     if time:  # will be set by collectd unless specified
         notif.time = time
-   
+
     notif.dispatch()
 
 
-def dispatchValues(values=None, dimensions={},
-                   plugin="Unknown", plugin_instance="",
-                   type="objects", type_instance=None,
-                   plugin_instance_max_length=1024,
-                   time=None, host=None, interval=None):
+def dispatch_values(values=None, dimensions={},
+                    plugin="Unknown", plugin_instance="",
+                    type="objects", type_instance=None,
+                    plugin_instance_max_length=1024,
+                    time=None, host=None, interval=None):
     """
     Keyword arguments:
     values --  a list of values to be emitted (default None)
@@ -218,10 +223,10 @@ def dispatchValues(values=None, dimensions={},
 
     value = collectd.Values()
 
-    if dimensions and dimensions.__class__ == dict and len(dimensions) > 0:
+    if dimensions:
         # currently ingest parses dimensions out of the plugin_instance
         value.plugin_instance += '[{dims}]'.format(
-            dims=_parse_dimensions(dimensions, max_length=(max_length-len(plugin_instance)-2)))
+            dims=_parse_dimensions(dimensions, max_length=(plugin_instance_max_length-len(plugin_instance)-2)))
         value.meta = dimensions
     else:
         # With some versions of CollectD, a dummy metadata map must to be added
